@@ -1,45 +1,83 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, LayoutGrid } from "lucide-react";
+import {
+  ReactFlow,
+  useNodesState,
+  useEdgesState,
+  Background,
+  Controls,
+  BackgroundVariant,
+  type Node,
+  type NodeProps,
+  type NodeTypes,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
-type Column = {
-  id: string;
+type TableNodeData = {
   name: string;
-  type: string;
+  columns: { id: string; name: string; type: string }[];
 };
 
-type Table = {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  columns: Column[];
-};
+type TableNodeType = Node<TableNodeData, "table">;
+
+// Custom node component — renders one table card on the canvas
+function TableNode({ data }: NodeProps<TableNodeType>) {
+  return (
+    <div className="w-48 rounded-lg border bg-card shadow-sm">
+      <div className="rounded-t-lg bg-primary px-3 py-2">
+        <span className="text-sm font-semibold text-primary-foreground">
+          {data.name}
+        </span>
+      </div>
+      <div className="px-3 py-2">
+        <p className="text-xs text-muted-foreground">No columns yet.</p>
+      </div>
+    </div>
+  );
+}
+
+// defined outside the component so React Flow doesn't re-register node types on every render
+const nodeTypes: NodeTypes = { table: TableNode };
 
 export default function Home() {
-  const [tables, setTables] = useState<Table[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
+  const [edges, , onEdgesChange] = useEdgesState([]);
 
-  function addTable() {
-    setTables((prev) => {
+  const resetLayout = useCallback(() => {
+    setNodes((prev) =>
+      prev.map((node, idx) => ({
+        ...node,
+        position: {
+          x: 80 + (idx % 4) * 220,
+          y: 80 + Math.floor(idx / 4) * 180,
+        },
+      }))
+    );
+  }, [setNodes]);
+
+  const addTable = useCallback(() => {
+    setNodes((prev) => {
       const idx = prev.length;
       return [
         ...prev,
         {
           id: crypto.randomUUID(),
-          name: `table_${idx + 1}`,
-          // stagger new tables in a 4-column grid so they don't pile up
-          x: 80 + (idx % 4) * 220,
-          y: 80 + Math.floor(idx / 4) * 180,
-          columns: [],
+          type: "table" as const,
+          position: {
+            x: 80 + (idx % 4) * 220,
+            y: 80 + Math.floor(idx / 4) * 180,
+          },
+          data: { name: `table_${idx + 1}`, columns: [] },
         },
       ];
     });
-  }
+  }, [setNodes]);
 
   return (
     <main className="flex h-screen flex-col bg-background text-foreground">
@@ -55,6 +93,10 @@ export default function Home() {
           <Button size="sm" variant="outline">
             <Download className="mr-1 h-4 w-4" />
             Export SQL
+          </Button>
+          <Button size="sm" variant="outline" onClick={resetLayout}>
+            <LayoutGrid className="mr-1 h-4 w-4" />
+            Reset layout
           </Button>
         </div>
         <div className="flex items-center gap-2">
@@ -74,33 +116,26 @@ export default function Home() {
 
       {/* MAIN AREA: canvas + sidebar */}
       <div className="flex flex-1 overflow-hidden">
-        {/* CANVAS */}
-        <section className="relative flex-1 overflow-auto bg-muted/20 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] bg-size-[24px_24px]">
-          {tables.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
+        {/* CANVAS — ReactFlow fills 100% of this section via its own internal styles */}
+        <section className="relative flex-1">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} />
+            <Controls />
+          </ReactFlow>
+
+          {/* empty-state overlay — pointer-events-none so it doesn't block canvas interaction */}
+          {nodes.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <p className="text-sm text-muted-foreground">
                 Click &quot;New table&quot; to start designing your schema
               </p>
             </div>
-          ) : (
-            tables.map((table) => (
-              <div
-                key={table.id}
-                style={{ left: table.x, top: table.y }}
-                className="absolute w-48 rounded-lg border bg-card shadow-sm"
-              >
-                <div className="rounded-t-lg bg-primary px-3 py-2">
-                  <span className="text-sm font-semibold text-primary-foreground">
-                    {table.name}
-                  </span>
-                </div>
-                <div className="px-3 py-2">
-                  <p className="text-xs text-muted-foreground">
-                    No columns yet.
-                  </p>
-                </div>
-              </div>
-            ))
           )}
         </section>
 
@@ -116,7 +151,7 @@ export default function Home() {
       {/* STATUS BAR */}
       <footer className="flex h-7 items-center justify-between border-t px-4 text-xs text-muted-foreground">
         <span>
-          {tables.length} {tables.length === 1 ? "table" : "tables"}
+          {nodes.length} {nodes.length === 1 ? "table" : "tables"}
         </span>
         <span>PostgreSQL</span>
       </footer>
