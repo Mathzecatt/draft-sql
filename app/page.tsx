@@ -51,6 +51,8 @@ type TableNodeData = {
 
 type TableNodeType = Node<TableNodeData, "table">;
 
+type ContextMenu = { x: number; y: number; nodeId: string } | null;
+
 // Custom node — renders a table card with its columns listed
 function TableNode({ data }: NodeProps<TableNodeType>) {
   return (
@@ -97,11 +99,10 @@ const DEFAULT_SIDEBAR_WIDTH = 288;
 export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, , onEdgesChange] = useEdgesState([]);
+  const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
 
   // theme toggle
   const { resolvedTheme, setTheme } = useTheme();
-  // next-themes reads from the DOM, so it's not available on the first server render.
-  // mounting guard prevents a hydration mismatch on the icon.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -130,8 +131,23 @@ export default function Home() {
     };
   }, []);
 
-  // derive selected node from React Flow's own `selected` flag — no extra state needed
+  // close context menu when clicking anywhere outside it
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleOutsideClick() { setContextMenu(null); }
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, [contextMenu]);
+
   const selectedNode = nodes.find((n) => n.selected);
+
+  const deleteTable = useCallback(
+    (nodeId: string) => {
+      setNodes((prev) => prev.filter((n) => n.id !== nodeId));
+      setContextMenu(null);
+    },
+    [setNodes]
+  );
 
   const updateTableData = useCallback(
     (nodeId: string, updater: (data: TableNodeData) => TableNodeData) => {
@@ -173,6 +189,14 @@ export default function Home() {
       ];
     });
   }, [setNodes]);
+
+  const onNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: TableNodeType) => {
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
+    },
+    []
+  );
 
   return (
     <main className="flex h-screen flex-col bg-background text-foreground">
@@ -231,6 +255,8 @@ export default function Home() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
+            onNodeContextMenu={onNodeContextMenu}
+            onPaneClick={() => setContextMenu(null)}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} />
             <Controls />
@@ -243,6 +269,23 @@ export default function Home() {
               </p>
             </div>
           )}
+
+          {/* right-click context menu — fixed so it sits at the cursor regardless of scroll */}
+          {contextMenu && (
+            <div
+              className="fixed z-50 min-w-36 rounded-md border bg-popover p-1 shadow-md"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onMouseDown={(e) => e.stopPropagation()} // prevent outside-click handler from firing
+            >
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                onClick={() => deleteTable(contextMenu.nodeId)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete table
+              </button>
+            </div>
+          )}
         </section>
 
         {/* RIGHT SIDEBAR */}
@@ -251,14 +294,13 @@ export default function Home() {
           style={{ width: sidebarWidth }}
           className="relative flex shrink-0 flex-col gap-4 overflow-y-auto border-l p-4"
         >
-          {/* drag handle — thin strip on the left edge */}
+          {/* drag handle */}
           <div
             className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-border"
             onMouseDown={(e) => {
               e.preventDefault();
               isResizing.current = true;
               document.body.style.cursor = "col-resize";
-              // prevent text selection while dragging
               document.body.style.userSelect = "none";
             }}
           />
@@ -279,17 +321,28 @@ export default function Home() {
                 >
                   Table name
                 </Label>
-                <Input
-                  id="table-name"
-                  value={selectedNode.data.name}
-                  onChange={(e) =>
-                    updateTableData(selectedNode.id, (d) => ({
-                      ...d,
-                      name: e.target.value,
-                    }))
-                  }
-                  className="h-8"
-                />
+                <div className="flex items-center gap-1">
+                  <Input
+                    id="table-name"
+                    value={selectedNode.data.name}
+                    onChange={(e) =>
+                      updateTableData(selectedNode.id, (d) => ({
+                        ...d,
+                        name: e.target.value,
+                      }))
+                    }
+                    className="h-8 flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-8 shrink-0"
+                    onClick={() => deleteTable(selectedNode.id)}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </div>
               </div>
 
               {/* Columns */}
@@ -347,7 +400,6 @@ export default function Home() {
                             updateTableData(selectedNode.id, (d) => ({
                               ...d,
                               columns: d.columns.map((c) =>
-                                // clear length when switching away from VARCHAR
                                 c.id === col.id ? { ...c, type, length: undefined } : c
                               ),
                             }))
@@ -407,6 +459,7 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
             </>
           )}
         </aside>
