@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Download, LayoutGrid } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Download, LayoutGrid, Trash2 } from "lucide-react";
 import {
   ReactFlow,
   useNodesState,
@@ -19,35 +26,86 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+const SQL_TYPES = [
+  "CHAR",
+  "VARCHAR",
+  "INTEGER",
+  "BOOLEAN",
+  "TIMESTAMP",
+  "UUID",
+  "NUMERIC",
+] as const;
+
+type ColumnDef = {
+  id: string;
+  name: string;
+  type: string;
+  length?: number; // only relevant for VARCHAR
+};
+
 type TableNodeData = {
   name: string;
-  columns: { id: string; name: string; type: string }[];
+  columns: ColumnDef[];
 };
 
 type TableNodeType = Node<TableNodeData, "table">;
 
-// Custom node component — renders one table card on the canvas
+// Custom node — renders a table card with its columns listed
 function TableNode({ data }: NodeProps<TableNodeType>) {
   return (
-    <div className="w-48 rounded-lg border bg-card shadow-sm">
+    <div className="w-52 rounded-lg border bg-card shadow-sm">
       <div className="rounded-t-lg bg-primary px-3 py-2">
         <span className="text-sm font-semibold text-primary-foreground">
-          {data.name}
+          {data.name || "unnamed"}
         </span>
       </div>
-      <div className="px-3 py-2">
-        <p className="text-xs text-muted-foreground">No columns yet.</p>
+      <div className="divide-y">
+        {data.columns.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            No columns yet.
+          </p>
+        ) : (
+          data.columns.map((col) => (
+            <div
+              key={col.id}
+              className="flex items-center justify-between px-3 py-1.5"
+            >
+              <span className="text-xs font-medium">
+                {col.name || "unnamed"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {col.type === "VARCHAR" && col.length
+                  ? `VARCHAR(${col.length})`
+                  : col.type}
+              </span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-// defined outside the component so React Flow doesn't re-register node types on every render
+// outside component — prevents React Flow from re-registering node types on every render
 const nodeTypes: NodeTypes = { table: TableNode };
 
 export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, , onEdgesChange] = useEdgesState([]);
+
+  // derive selected node from React Flow's own `selected` flag — no extra state needed
+  const selectedNode = nodes.find((n) => n.selected);
+
+  const updateTableData = useCallback(
+    (nodeId: string, updater: (data: TableNodeData) => TableNodeData) => {
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId ? { ...node, data: updater(node.data) } : node
+        )
+      );
+    },
+    [setNodes]
+  );
 
   const resetLayout = useCallback(() => {
     setNodes((prev) =>
@@ -116,7 +174,7 @@ export default function Home() {
 
       {/* MAIN AREA: canvas + sidebar */}
       <div className="flex flex-1 overflow-hidden">
-        {/* CANVAS — ReactFlow fills 100% of this section via its own internal styles */}
+        {/* CANVAS */}
         <section className="relative flex-1">
           <ReactFlow
             nodes={nodes}
@@ -129,7 +187,6 @@ export default function Home() {
             <Controls />
           </ReactFlow>
 
-          {/* empty-state overlay — pointer-events-none so it doesn't block canvas interaction */}
           {nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <p className="text-sm text-muted-foreground">
@@ -140,11 +197,153 @@ export default function Home() {
         </section>
 
         {/* RIGHT SIDEBAR */}
-        <aside className="w-72 border-l p-4">
-          <h2 className="mb-3 text-sm font-semibold">Table properties</h2>
-          <p className="text-sm text-muted-foreground">
-            Select a table on the canvas to edit its properties.
-          </p>
+        <aside className="flex w-72 flex-col gap-4 overflow-y-auto border-l p-4">
+          <h2 className="text-sm font-semibold">Table properties</h2>
+
+          {!selectedNode ? (
+            <p className="text-sm text-muted-foreground">
+              Select a table on the canvas to edit its properties.
+            </p>
+          ) : (
+            <>
+              {/* Table name */}
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="table-name"
+                  className="text-xs text-muted-foreground"
+                >
+                  Table name
+                </Label>
+                <Input
+                  id="table-name"
+                  value={selectedNode.data.name}
+                  onChange={(e) =>
+                    updateTableData(selectedNode.id, (d) => ({
+                      ...d,
+                      name: e.target.value,
+                    }))
+                  }
+                  className="h-8"
+                />
+              </div>
+
+              {/* Columns */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium">Columns</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={() =>
+                      updateTableData(selectedNode.id, (d) => ({
+                        ...d,
+                        columns: [
+                          ...d.columns,
+                          {
+                            id: crypto.randomUUID(),
+                            name: "column_name",
+                            type: "TEXT",
+                          },
+                        ],
+                      }))
+                    }
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Add column
+                  </Button>
+                </div>
+
+                {selectedNode.data.columns.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No columns yet.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {selectedNode.data.columns.map((col) => (
+                      <div key={col.id} className="flex items-center gap-1">
+                        <Input
+                          value={col.name}
+                          onChange={(e) =>
+                            updateTableData(selectedNode.id, (d) => ({
+                              ...d,
+                              columns: d.columns.map((c) =>
+                                c.id === col.id
+                                  ? { ...c, name: e.target.value }
+                                  : c
+                              ),
+                            }))
+                          }
+                          className="h-7 min-w-0 flex-1 text-xs"
+                        />
+                        <Select
+                          value={col.type}
+                          onValueChange={(type) =>
+                            updateTableData(selectedNode.id, (d) => ({
+                              ...d,
+                              columns: d.columns.map((c) =>
+                                // clear length when switching away from VARCHAR
+                                c.id === col.id ? { ...c, type, length: undefined } : c
+                              ),
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="h-7 w-24 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SQL_TYPES.map((t) => (
+                              <SelectItem key={t} value={t} className="text-xs">
+                                {t}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {col.type === "VARCHAR" && (
+                          <Input
+                            type="number"
+                            min={1}
+                            max={65535}
+                            placeholder="255"
+                            value={col.length ?? ""}
+                            onChange={(e) =>
+                              updateTableData(selectedNode.id, (d) => ({
+                                ...d,
+                                columns: d.columns.map((c) =>
+                                  c.id === col.id
+                                    ? {
+                                        ...c,
+                                        length: e.target.value
+                                          ? Number(e.target.value)
+                                          : undefined,
+                                      }
+                                    : c
+                                ),
+                              }))
+                            }
+                            className="h-7 w-14 text-xs"
+                          />
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() =>
+                            updateTableData(selectedNode.id, (d) => ({
+                              ...d,
+                              columns: d.columns.filter((c) => c.id !== col.id),
+                            }))
+                          }
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </aside>
       </div>
 
