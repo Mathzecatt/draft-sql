@@ -48,6 +48,16 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* map React Flow's own CSS variables to our shadcn tokens so controls + attribution adapt to the theme */
+:root {
+  --xy-controls-button-background-color: var(--background);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-attribution-background-color: color-mix(in oklch, var(--background) 80%, transparent);
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -81,6 +91,15 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-attribution-background-color: color-mix(in oklch, var(--card) 80%, transparent);
 }
 
 .dark {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Download, LayoutGrid, Trash2 } from "lucide-react";
+import { Plus, Download, LayoutGrid, Trash2, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import {
   ReactFlow,
   useNodesState,
@@ -89,9 +90,45 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
 // outside component — prevents React Flow from re-registering node types on every render
 const nodeTypes: NodeTypes = { table: TableNode };
 
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 520;
+const DEFAULT_SIDEBAR_WIDTH = 288;
+
 export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, , onEdgesChange] = useEdgesState([]);
+
+  // theme toggle
+  const { resolvedTheme, setTheme } = useTheme();
+  // next-themes reads from the DOM, so it's not available on the first server render.
+  // mounting guard prevents a hydration mismatch on the icon.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // resizable sidebar
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isResizing.current || !sidebarRef.current) return;
+      const rect = sidebarRef.current.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
+      setSidebarWidth(Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, newWidth)));
+    }
+    function onMouseUp() {
+      isResizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
 
   // derive selected node from React Flow's own `selected` flag — no extra state needed
   const selectedNode = nodes.find((n) => n.selected);
@@ -157,7 +194,19 @@ export default function Home() {
             Reset layout
           </Button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-8 w-8"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          >
+            {mounted && (resolvedTheme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            ))}
+          </Button>
           <Label
             htmlFor="schema-name"
             className="text-sm text-muted-foreground"
@@ -197,7 +246,23 @@ export default function Home() {
         </section>
 
         {/* RIGHT SIDEBAR */}
-        <aside className="flex w-72 flex-col gap-4 overflow-y-auto border-l p-4">
+        <aside
+          ref={sidebarRef}
+          style={{ width: sidebarWidth }}
+          className="relative flex shrink-0 flex-col gap-4 overflow-y-auto border-l p-4"
+        >
+          {/* drag handle — thin strip on the left edge */}
+          <div
+            className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-border"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isResizing.current = true;
+              document.body.style.cursor = "col-resize";
+              // prevent text selection while dragging
+              document.body.style.userSelect = "none";
+            }}
+          />
+
           <h2 className="text-sm font-semibold">Table properties</h2>
 
           {!selectedNode ? (
