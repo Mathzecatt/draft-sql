@@ -66,6 +66,11 @@ type SidebarProps = {
   ) => void;
   deleteTable: (nodeId: string) => void;
   issues: ValidationIssue[];
+  // For the "no selection" overview panel.
+  allNodes: TableNodeType[];
+  edgeCount: number;
+  onSelectTable: (nodeId: string) => void;
+  onTableContextMenu: (e: React.MouseEvent, nodeId: string) => void;
 };
 
 export function Sidebar({
@@ -76,6 +81,10 @@ export function Sidebar({
   updateTableData,
   deleteTable,
   issues,
+  allNodes,
+  edgeCount,
+  onSelectTable,
+  onTableContextMenu,
 }: SidebarProps) {
   // Pre-compute the invalid column ids + table-name flag for the selected node
   // so the JSX below stays readable.
@@ -120,9 +129,53 @@ export function Sidebar({
       )}
 
       {!selectedNode ? (
-        <p className="text-sm text-muted-foreground">
-          Select a table on the canvas to edit its properties.
-        </p>
+        <div className="flex flex-col gap-3">
+          {/* Overview when nothing is selected — shown instead of the
+              "select a table" hint to make the empty state useful. */}
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Tables
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {allNodes.length} · {edgeCount}{" "}
+              {edgeCount === 1 ? "relation" : "relations"}
+            </span>
+          </div>
+
+          {allNodes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No tables yet. Click &quot;New table&quot; to start.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {allNodes.map((node) => (
+                <li key={node.id}>
+                  <button
+                    onClick={() => onSelectTable(node.id)}
+                    onContextMenu={(e) => onTableContextMenu(e, node.id)}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  >
+                    <span className="truncate font-medium">
+                      {node.data.name || (
+                        <span className="italic text-muted-foreground">
+                          unnamed
+                        </span>
+                      )}
+                    </span>
+                    <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                      {node.data.columns.length}{" "}
+                      {node.data.columns.length === 1 ? "col" : "cols"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-[11px] text-muted-foreground">
+            Click a table to focus it · right-click for actions
+          </p>
+        </div>
       ) : (
         <>
           {/* Table name */}

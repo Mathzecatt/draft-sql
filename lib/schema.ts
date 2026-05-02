@@ -43,10 +43,18 @@ export const FK_ACTIONS = [
 ] as const;
 export type FkAction = (typeof FK_ACTIONS)[number];
 
+// Cardinality at each end of a relationship. "one" = perpendicular bar marker,
+// "many" = crow's foot. Default convention is many-on-source / one-on-target,
+// matching the typical FK pattern (many orders reference one user).
+export const CARDINALITIES = ["one", "many"] as const;
+export type Cardinality = (typeof CARDINALITIES)[number];
+
 export type FkEdgeData = {
   sourceColumnId: string;
   targetColumnId: string;
   onDelete?: FkAction;
+  sourceCardinality?: Cardinality;
+  targetCardinality?: Cardinality;
 };
 
 export type FkEdgeType = Edge<FkEdgeData, "fk">;
