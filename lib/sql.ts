@@ -16,17 +16,19 @@ function renderColumnType(col: ColumnDef): string {
   return col.type;
 }
 
-function renderColumn(col: ColumnDef): string {
+function renderColumn(col: ColumnDef, isCompositePk: boolean): string {
   const parts: string[] = [
     quoteIdent(col.name || "unnamed"),
     renderColumnType(col),
   ];
   // PRIMARY KEY in PostgreSQL implies NOT NULL + UNIQUE, so we suppress the
-  // redundant clauses to keep the generated SQL clean.
-  if (col.primaryKey) {
+  // redundant clauses to keep the generated SQL clean. When the table has a
+  // composite PK we emit a table-level constraint instead — see renderTable —
+  // so individual columns must NOT carry their own PRIMARY KEY clause.
+  if (col.primaryKey && !isCompositePk) {
     parts.push("PRIMARY KEY");
   } else {
-    if (col.notNull) parts.push("NOT NULL");
+    if (col.notNull || col.primaryKey) parts.push("NOT NULL");
     if (col.unique) parts.push("UNIQUE");
   }
   return `  ${parts.join(" ")}`;
@@ -42,8 +44,21 @@ function renderTable(node: TableNodeType): string {
     return `-- Table "${node.data.name}" has no columns; skipping.\n`;
   }
 
-  const body = columns.map(renderColumn).join(",\n");
-  return `CREATE TABLE ${tableName} (\n${body}\n);`;
+  const pkColumns = columns.filter((c) => c.primaryKey);
+  const isComposite = pkColumns.length > 1;
+
+  const lines = columns.map((c) => renderColumn(c, isComposite));
+
+  // Composite PK: emit a single table-level constraint listing all PK columns.
+  // (Multiple inline PRIMARY KEY clauses are a syntax error in PostgreSQL.)
+  if (isComposite) {
+    const pkList = pkColumns
+      .map((c) => quoteIdent(c.name || "unnamed"))
+      .join(", ");
+    lines.push(`  PRIMARY KEY (${pkList})`);
+  }
+
+  return `CREATE TABLE ${tableName} (\n${lines.join(",\n")}\n);`;
 }
 
 // Resolve an edge's source/target column ids back to the names needed for
