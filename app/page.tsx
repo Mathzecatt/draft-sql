@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Plus, Download, LayoutGrid, Trash2, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -21,76 +14,16 @@ import {
   Background,
   Controls,
   BackgroundVariant,
-  type Node,
-  type NodeProps,
-  type NodeTypes,
+  addEdge,
+  type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-const SQL_TYPES = [
-  "CHAR",
-  "VARCHAR",
-  "INTEGER",
-  "BOOLEAN",
-  "TIMESTAMP",
-  "UUID",
-  "NUMERIC",
-] as const;
-
-type ColumnDef = {
-  id: string;
-  name: string;
-  type: string;
-  length?: number; // only relevant for VARCHAR
-};
-
-type TableNodeData = {
-  name: string;
-  columns: ColumnDef[];
-};
-
-type TableNodeType = Node<TableNodeData, "table">;
+import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
+import { Sidebar } from "@/components/Sidebar";
+import type { TableNodeData, TableNodeType, FkEdgeType } from "@/lib/schema";
 
 type ContextMenu = { x: number; y: number; nodeId: string } | null;
-
-// Custom node — renders a table card with its columns listed
-function TableNode({ data }: NodeProps<TableNodeType>) {
-  return (
-    <div className="w-52 rounded-lg border bg-card shadow-sm">
-      <div className="rounded-t-lg bg-primary px-3 py-2">
-        <span className="text-sm font-semibold text-primary-foreground">
-          {data.name || "unnamed"}
-        </span>
-      </div>
-      <div className="divide-y">
-        {data.columns.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            No columns yet.
-          </p>
-        ) : (
-          data.columns.map((col) => (
-            <div
-              key={col.id}
-              className="flex items-center justify-between px-3 py-1.5"
-            >
-              <span className="text-xs font-medium">
-                {col.name || "unnamed"}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {col.type === "VARCHAR" && col.length
-                  ? `VARCHAR(${col.length})`
-                  : col.type}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// outside component — prevents React Flow from re-registering node types on every render
-const nodeTypes: NodeTypes = { table: TableNode };
 
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 520;
@@ -98,7 +31,7 @@ const DEFAULT_SIDEBAR_WIDTH = 288;
 
 export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
-  const [edges, , onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FkEdgeType>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
 
   // theme toggle
@@ -116,7 +49,9 @@ export default function Home() {
       if (!isResizing.current || !sidebarRef.current) return;
       const rect = sidebarRef.current.getBoundingClientRect();
       const newWidth = rect.right - e.clientX;
-      setSidebarWidth(Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, newWidth)));
+      setSidebarWidth(
+        Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, newWidth)),
+      );
     }
     function onMouseUp() {
       isResizing.current = false;
@@ -134,7 +69,9 @@ export default function Home() {
   // close context menu when clicking anywhere outside it
   useEffect(() => {
     if (!contextMenu) return;
-    function handleOutsideClick() { setContextMenu(null); }
+    function handleOutsideClick() {
+      setContextMenu(null);
+    }
     window.addEventListener("mousedown", handleOutsideClick);
     return () => window.removeEventListener("mousedown", handleOutsideClick);
   }, [contextMenu]);
@@ -146,18 +83,18 @@ export default function Home() {
       setNodes((prev) => prev.filter((n) => n.id !== nodeId));
       setContextMenu(null);
     },
-    [setNodes]
+    [setNodes],
   );
 
   const updateTableData = useCallback(
     (nodeId: string, updater: (data: TableNodeData) => TableNodeData) => {
       setNodes((prev) =>
         prev.map((node) =>
-          node.id === nodeId ? { ...node, data: updater(node.data) } : node
-        )
+          node.id === nodeId ? { ...node, data: updater(node.data) } : node,
+        ),
       );
     },
-    [setNodes]
+    [setNodes],
   );
 
   const resetLayout = useCallback(() => {
@@ -168,7 +105,7 @@ export default function Home() {
           x: 80 + (idx % 4) * 220,
           y: 80 + Math.floor(idx / 4) * 180,
         },
-      }))
+      })),
     );
   }, [setNodes]);
 
@@ -195,7 +132,44 @@ export default function Home() {
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
     },
-    []
+    [],
+  );
+
+  const startSidebarResize = useCallback(() => {
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      // Extract the real column IDs from the handle strings (e.g. "uuid-r" → "uuid")
+      const sourceColumnId = columnIdFromHandle(connection.sourceHandle);
+      const targetColumnId = columnIdFromHandle(connection.targetHandle);
+
+      // All four fields must be present — React Flow can theoretically pass nulls
+      if (
+        !connection.source ||
+        !connection.target ||
+        !sourceColumnId ||
+        !targetColumnId
+      )
+        return;
+
+      // Build a fully-typed FkEdge so edge.data is always available downstream (SQL export, etc.)
+      const newEdge: FkEdgeType = {
+        id: crypto.randomUUID(),
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle ?? null,
+        targetHandle: connection.targetHandle ?? null,
+        type: "fk",
+        data: { sourceColumnId, targetColumnId },
+      };
+
+      setEdges((eds) => addEdge(newEdge, eds));
+    },
+    [setEdges],
   );
 
   return (
@@ -223,13 +197,16 @@ export default function Home() {
             size="icon"
             variant="outline"
             className="h-8 w-8"
-            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            onClick={() =>
+              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+            }
           >
-            {mounted && (resolvedTheme === "dark" ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Moon className="h-4 w-4" />
-            ))}
+            {mounted &&
+              (resolvedTheme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              ))}
           </Button>
           <Label
             htmlFor="schema-name"
@@ -257,6 +234,7 @@ export default function Home() {
             nodeTypes={nodeTypes}
             onNodeContextMenu={onNodeContextMenu}
             onPaneClick={() => setContextMenu(null)}
+            onConnect={onConnect}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} />
             <Controls />
@@ -288,181 +266,14 @@ export default function Home() {
           )}
         </section>
 
-        {/* RIGHT SIDEBAR */}
-        <aside
-          ref={sidebarRef}
-          style={{ width: sidebarWidth }}
-          className="relative flex shrink-0 flex-col gap-4 overflow-y-auto border-l p-4"
-        >
-          {/* drag handle */}
-          <div
-            className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-border"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              isResizing.current = true;
-              document.body.style.cursor = "col-resize";
-              document.body.style.userSelect = "none";
-            }}
-          />
-
-          <h2 className="text-sm font-semibold">Table properties</h2>
-
-          {!selectedNode ? (
-            <p className="text-sm text-muted-foreground">
-              Select a table on the canvas to edit its properties.
-            </p>
-          ) : (
-            <>
-              {/* Table name */}
-              <div className="flex flex-col gap-1.5">
-                <Label
-                  htmlFor="table-name"
-                  className="text-xs text-muted-foreground"
-                >
-                  Table name
-                </Label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    id="table-name"
-                    value={selectedNode.data.name}
-                    onChange={(e) =>
-                      updateTableData(selectedNode.id, (d) => ({
-                        ...d,
-                        name: e.target.value,
-                      }))
-                    }
-                    className="h-8 flex-1"
-                  />
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 shrink-0"
-                    onClick={() => deleteTable(selectedNode.id)}
-                  >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-
-              {/* Columns */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">Columns</span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs"
-                    onClick={() =>
-                      updateTableData(selectedNode.id, (d) => ({
-                        ...d,
-                        columns: [
-                          ...d.columns,
-                          {
-                            id: crypto.randomUUID(),
-                            name: "column_name",
-                            type: "TEXT",
-                          },
-                        ],
-                      }))
-                    }
-                  >
-                    <Plus className="mr-1 h-3 w-3" />
-                    Add column
-                  </Button>
-                </div>
-
-                {selectedNode.data.columns.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No columns yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {selectedNode.data.columns.map((col) => (
-                      <div key={col.id} className="flex items-center gap-1">
-                        <Input
-                          value={col.name}
-                          onChange={(e) =>
-                            updateTableData(selectedNode.id, (d) => ({
-                              ...d,
-                              columns: d.columns.map((c) =>
-                                c.id === col.id
-                                  ? { ...c, name: e.target.value }
-                                  : c
-                              ),
-                            }))
-                          }
-                          className="h-7 min-w-0 flex-1 text-xs"
-                        />
-                        <Select
-                          value={col.type}
-                          onValueChange={(type) =>
-                            updateTableData(selectedNode.id, (d) => ({
-                              ...d,
-                              columns: d.columns.map((c) =>
-                                c.id === col.id ? { ...c, type, length: undefined } : c
-                              ),
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="h-7 w-24 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SQL_TYPES.map((t) => (
-                              <SelectItem key={t} value={t} className="text-xs">
-                                {t}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {col.type === "VARCHAR" && (
-                          <Input
-                            type="number"
-                            min={1}
-                            max={65535}
-                            placeholder="255"
-                            value={col.length ?? ""}
-                            onChange={(e) =>
-                              updateTableData(selectedNode.id, (d) => ({
-                                ...d,
-                                columns: d.columns.map((c) =>
-                                  c.id === col.id
-                                    ? {
-                                        ...c,
-                                        length: e.target.value
-                                          ? Number(e.target.value)
-                                          : undefined,
-                                      }
-                                    : c
-                                ),
-                              }))
-                            }
-                            className="h-7 w-14 text-xs"
-                          />
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 shrink-0"
-                          onClick={() =>
-                            updateTableData(selectedNode.id, (d) => ({
-                              ...d,
-                              columns: d.columns.filter((c) => c.id !== col.id),
-                            }))
-                          }
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </>
-          )}
-        </aside>
+        <Sidebar
+          sidebarRef={sidebarRef}
+          width={sidebarWidth}
+          onResizeStart={startSidebarResize}
+          selectedNode={selectedNode}
+          updateTableData={updateTableData}
+          deleteTable={deleteTable}
+        />
       </div>
 
       {/* STATUS BAR */}
