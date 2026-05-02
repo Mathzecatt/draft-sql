@@ -13,6 +13,8 @@ import {
   Sun,
   Moon,
   Eraser,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -59,6 +61,9 @@ export default function Home() {
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
   const [schemaName, setSchemaName] = useState("my_schema");
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [sqlPreviewOpen, setSqlPreviewOpen] = useState(false);
+  const [sqlPreview, setSqlPreview] = useState("");
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   // theme toggle
   const { resolvedTheme, setTheme } = useTheme();
@@ -111,6 +116,39 @@ export default function Home() {
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, []);
+
+  // Delete / Backspace removes the currently selected nodes and edges.
+  // We swallow the event only if there's actually something selected, otherwise
+  // a Backspace in an unrelated input field would get hijacked.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      // Don't fire when the user is typing in an input/textarea/contentEditable.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      )
+        return;
+
+      const selectedNodeIds = nodes.filter((n) => n.selected).map((n) => n.id);
+      const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id);
+      if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) return;
+
+      e.preventDefault();
+      if (selectedNodeIds.length > 0) {
+        setNodes((prev) => prev.filter((n) => !selectedNodeIds.includes(n.id)));
+      }
+      if (selectedEdgeIds.length > 0) {
+        setEdges((prev) => prev.filter((e) => !selectedEdgeIds.includes(e.id)));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [nodes, edges, setNodes, setEdges]);
 
   // close context menu when clicking anywhere outside it
   useEffect(() => {
@@ -220,10 +258,29 @@ export default function Home() {
     setClearConfirmOpen(false);
   }, [setNodes, setEdges]);
 
-  const exportSql = useCallback(() => {
-    const sql = generateSql(nodes, edges, schemaName);
-    downloadSql(sql, `${schemaName || "schema"}.sql`);
+  const openSqlPreview = useCallback(() => {
+    setSqlPreview(generateSql(nodes, edges, schemaName));
+    setCopyState("idle");
+    setSqlPreviewOpen(true);
   }, [nodes, edges, schemaName]);
+
+  const downloadCurrentSql = useCallback(() => {
+    downloadSql(sqlPreview, `${schemaName || "schema"}.sql`);
+  }, [sqlPreview, schemaName]);
+
+  const copyCurrentSql = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(sqlPreview);
+      setCopyState("copied");
+      // Brief visual confirmation, then revert. setTimeout is fine here —
+      // the worst case if the dialog closes mid-timer is a no-op state set
+      // on an unmounted component, which React 19 handles gracefully.
+      setTimeout(() => setCopyState("idle"), 1500);
+    } catch {
+      // Clipboard API can fail under non-secure context or denied permission.
+      // No-op for now; could surface a toast later.
+    }
+  }, [sqlPreview]);
 
   const startSidebarResize = useCallback(() => {
     isResizing.current = true;
@@ -276,7 +333,7 @@ export default function Home() {
           <Button
             size="sm"
             variant="outline"
-            onClick={exportSql}
+            onClick={openSqlPreview}
             disabled={hasErrors || nodes.length === 0}
             title={
               hasErrors
@@ -434,6 +491,40 @@ export default function Home() {
             <Button variant="destructive" onClick={clearAll}>
               <Trash2 className="mr-1 h-4 w-4" />
               Clear all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* SQL preview — see what's about to be exported and copy/download. */}
+      <Dialog open={sqlPreviewOpen} onOpenChange={setSqlPreviewOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Generated SQL</DialogTitle>
+            <DialogDescription>
+              PostgreSQL DDL for the current schema. Review, copy, or download.
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-[50vh] overflow-auto rounded-md border bg-muted p-3 font-mono text-xs">
+            {sqlPreview}
+          </pre>
+          <DialogFooter>
+            <Button variant="outline" onClick={copyCurrentSql}>
+              {copyState === "copied" ? (
+                <>
+                  <Check className="mr-1 h-4 w-4" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-1 h-4 w-4" />
+                  Copy
+                </>
+              )}
+            </Button>
+            <Button onClick={downloadCurrentSql}>
+              <Download className="mr-1 h-4 w-4" />
+              Download .sql
             </Button>
           </DialogFooter>
         </DialogContent>
