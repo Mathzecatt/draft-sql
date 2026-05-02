@@ -15,7 +15,7 @@ export type SqlType = (typeof SQL_TYPES)[number];
 export type ColumnDef = {
   id: string;
   name: string;
-  type: string;
+  type: SqlType;
   length?: number; // only relevant for VARCHAR
 };
 

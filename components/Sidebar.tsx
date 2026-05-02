@@ -10,7 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SQL_TYPES, type TableNodeData, type TableNodeType } from "@/lib/schema";
+import {
+  SQL_TYPES,
+  type SqlType,
+  type TableNodeData,
+  type TableNodeType,
+} from "@/lib/schema";
 
 type SidebarProps = {
   sidebarRef: RefObject<HTMLDivElement | null>;
@@ -103,7 +108,7 @@ export function Sidebar({
                       {
                         id: crypto.randomUUID(),
                         name: "column_name",
-                        type: "TEXT",
+                        type: "INTEGER",
                       },
                     ],
                   }))
@@ -141,7 +146,7 @@ export function Sidebar({
                           ...d,
                           columns: d.columns.map((c) =>
                             c.id === col.id
-                              ? { ...c, type, length: undefined }
+                              ? { ...c, type: type as SqlType, length: undefined }
                               : c
                           ),
                         }))
