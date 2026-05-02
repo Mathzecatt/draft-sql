@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Download, LayoutGrid, Trash2, Sun, Moon } from "lucide-react";
+import {
+  Plus,
+  Download,
+  LayoutGrid,
+  Trash2,
+  Sun,
+  Moon,
+  Eraser,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import {
   ReactFlow,
@@ -23,7 +31,15 @@ import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
 import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
 import type { TableNodeData, TableNodeType, FkEdgeType } from "@/lib/schema";
-import { loadSchema, saveSchema } from "@/lib/storage";
+import { loadSchema, saveSchema, clearSchema } from "@/lib/storage";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { generateSql, downloadSql } from "@/lib/sql";
 
 // Discriminated union — same menu, but the action depends on what was right-clicked.
@@ -41,6 +57,7 @@ export default function Home() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<FkEdgeType>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
   const [schemaName, setSchemaName] = useState("my_schema");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   // theme toggle
   const { resolvedTheme, setTheme } = useTheme();
@@ -189,6 +206,13 @@ export default function Home() {
     [setEdges],
   );
 
+  const clearAll = useCallback(() => {
+    setNodes([]);
+    setEdges([]);
+    clearSchema();
+    setClearConfirmOpen(false);
+  }, [setNodes, setEdges]);
+
   const exportSql = useCallback(() => {
     const sql = generateSql(nodes, edges, schemaName);
     downloadSql(sql, `${schemaName || "schema"}.sql`);
@@ -249,6 +273,15 @@ export default function Home() {
           <Button size="sm" variant="outline" onClick={resetLayout}>
             <LayoutGrid className="mr-1 h-4 w-4" />
             Reset layout
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setClearConfirmOpen(true)}
+            disabled={nodes.length === 0 && edges.length === 0}
+          >
+            <Eraser className="mr-1 h-4 w-4" />
+            Clear all
           </Button>
         </div>
         <div className="flex items-center gap-3">
@@ -355,6 +388,36 @@ export default function Home() {
         </span>
         <span>PostgreSQL</span>
       </footer>
+
+      {/* Confirm before clearing — wiping the whole schema is destructive
+          and can't be undone (no history yet). */}
+      <Dialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear all tables?</DialogTitle>
+            <DialogDescription>
+              This will delete all {nodes.length}{" "}
+              {nodes.length === 1 ? "table" : "tables"} and{" "}
+              {edges.length === 1
+                ? "1 relationship"
+                : `${edges.length} relationships`}
+              . This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setClearConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={clearAll}>
+              <Trash2 className="mr-1 h-4 w-4" />
+              Clear all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
