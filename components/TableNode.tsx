@@ -49,6 +49,22 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
                     PK
                   </span>
                 )}
+                {!col.primaryKey && col.notNull && (
+                  <span
+                    title="NOT NULL"
+                    className="rounded border border-border px-1 text-[9px] font-semibold text-muted-foreground"
+                  >
+                    NN
+                  </span>
+                )}
+                {col.unique && !col.primaryKey && (
+                  <span
+                    title="UNIQUE"
+                    className="rounded border border-border px-1 text-[9px] font-semibold text-muted-foreground"
+                  >
+                    UQ
+                  </span>
+                )}
                 {col.name || "unnamed"}
               </span>
               <span className="text-xs text-muted-foreground">

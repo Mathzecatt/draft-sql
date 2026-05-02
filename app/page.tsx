@@ -146,8 +146,16 @@ export default function Home() {
       e.preventDefault();
       if (selectedNodeIds.length > 0) {
         setNodes((prev) => prev.filter((n) => !selectedNodeIds.includes(n.id)));
-      }
-      if (selectedEdgeIds.length > 0) {
+        // Cascade-delete edges that referenced any of the deleted nodes.
+        setEdges((prev) =>
+          prev.filter(
+            (edge) =>
+              !selectedNodeIds.includes(edge.source) &&
+              !selectedNodeIds.includes(edge.target) &&
+              !selectedEdgeIds.includes(edge.id),
+          ),
+        );
+      } else if (selectedEdgeIds.length > 0) {
         setEdges((prev) => prev.filter((e) => !selectedEdgeIds.includes(e.id)));
       }
     }
@@ -176,9 +184,15 @@ export default function Home() {
   const deleteTable = useCallback(
     (nodeId: string) => {
       setNodes((prev) => prev.filter((n) => n.id !== nodeId));
+      // Cascade: drop any edges that referenced this table on either side.
+      // Without this, orphan edges linger in state and re-appear in the SQL
+      // export pointing at a table that no longer exists.
+      setEdges((prev) =>
+        prev.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      );
       setContextMenu(null);
     },
-    [setNodes],
+    [setNodes, setEdges],
   );
 
   const updateTableData = useCallback(
@@ -191,6 +205,28 @@ export default function Home() {
     },
     [setNodes],
   );
+
+  // Single source of truth for "drop edges that reference a dead column or table".
+  // Runs on every nodes change, including the post-hydration load (cleans up any
+  // saved-state inconsistency). Returns the same array when nothing changed so
+  // we don't re-trigger renders downstream.
+  useEffect(() => {
+    setEdges((prev) => {
+      const next = prev.filter((edge) => {
+        const sourceNode = nodes.find((n) => n.id === edge.source);
+        const targetNode = nodes.find((n) => n.id === edge.target);
+        if (!sourceNode || !targetNode || !edge.data) return false;
+        const sourceColAlive = sourceNode.data.columns.some(
+          (c) => c.id === edge.data!.sourceColumnId,
+        );
+        const targetColAlive = targetNode.data.columns.some(
+          (c) => c.id === edge.data!.targetColumnId,
+        );
+        return sourceColAlive && targetColAlive;
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [nodes, setEdges]);
 
   const resetLayout = useCallback(() => {
     setNodes((prev) =>
@@ -469,10 +505,28 @@ export default function Home() {
 
       {/* STATUS BAR */}
       <footer className="flex h-7 items-center justify-between border-t px-4 text-xs text-muted-foreground">
-        <span>
-          {nodes.length} {nodes.length === 1 ? "table" : "tables"}
-        </span>
-        <span>PostgreSQL</span>
+        <div className="flex items-center gap-3">
+          <span>
+            {nodes.length} {nodes.length === 1 ? "table" : "tables"}
+          </span>
+          <span>·</span>
+          <span>
+            {edges.length} {edges.length === 1 ? "relation" : "relations"}
+          </span>
+          {hasErrors && (
+            <>
+              <span>·</span>
+              <span className="text-destructive">
+                {issues.length} {issues.length === 1 ? "issue" : "issues"}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono">{schemaName || "(no schema)"}</span>
+          <span>·</span>
+          <span>PostgreSQL</span>
+        </div>
       </footer>
 
       {/* Confirm before clearing — wiping the whole schema is destructive
