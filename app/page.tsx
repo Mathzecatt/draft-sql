@@ -23,8 +23,14 @@ import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
 import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
 import type { TableNodeData, TableNodeType, FkEdgeType } from "@/lib/schema";
+import { loadSchema, saveSchema } from "@/lib/storage";
+import { generateSql, downloadSql } from "@/lib/sql";
 
-type ContextMenu = { x: number; y: number; nodeId: string } | null;
+// Discriminated union — same menu, but the action depends on what was right-clicked.
+type ContextMenu =
+  | { kind: "node"; x: number; y: number; nodeId: string }
+  | { kind: "edge"; x: number; y: number; edgeId: string }
+  | null;
 
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 520;
@@ -34,11 +40,32 @@ export default function Home() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FkEdgeType>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
+  const [schemaName, setSchemaName] = useState("my_schema");
 
   // theme toggle
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Load persisted schema once on mount. We track loaded separately from mounted
+  // because we don't want to write to localStorage during the initial render
+  // before we've had a chance to read what's already there — that would wipe
+  // the saved schema with an empty array.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const stored = loadSchema();
+    if (stored) {
+      setNodes(stored.nodes);
+      setEdges(stored.edges);
+    }
+    setHydrated(true);
+  }, [setNodes, setEdges]);
+
+  // Persist on every change, but only after hydration is done.
+  useEffect(() => {
+    if (!hydrated) return;
+    saveSchema({ nodes, edges });
+  }, [nodes, edges, hydrated]);
 
   // resizable sidebar
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
@@ -131,10 +158,41 @@ export default function Home() {
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: TableNodeType) => {
       e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
+      setContextMenu({
+        kind: "node",
+        x: e.clientX,
+        y: e.clientY,
+        nodeId: node.id,
+      });
     },
     [],
   );
+
+  const onEdgeContextMenu = useCallback(
+    (e: React.MouseEvent, edge: FkEdgeType) => {
+      e.preventDefault();
+      setContextMenu({
+        kind: "edge",
+        x: e.clientX,
+        y: e.clientY,
+        edgeId: edge.id,
+      });
+    },
+    [],
+  );
+
+  const deleteEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((prev) => prev.filter((e) => e.id !== edgeId));
+      setContextMenu(null);
+    },
+    [setEdges],
+  );
+
+  const exportSql = useCallback(() => {
+    const sql = generateSql(nodes, edges, schemaName);
+    downloadSql(sql, `${schemaName || "schema"}.sql`);
+  }, [nodes, edges, schemaName]);
 
   const startSidebarResize = useCallback(() => {
     isResizing.current = true;
@@ -184,7 +242,7 @@ export default function Home() {
             <Plus className="mr-1 h-4 w-4" />
             New table
           </Button>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" onClick={exportSql}>
             <Download className="mr-1 h-4 w-4" />
             Export SQL
           </Button>
@@ -217,7 +275,8 @@ export default function Home() {
           </Label>
           <Input
             id="schema-name"
-            defaultValue="my_schema"
+            value={schemaName}
+            onChange={(e) => setSchemaName(e.target.value)}
             className="h-8 w-48"
           />
         </div>
@@ -235,6 +294,7 @@ export default function Home() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodeContextMenu={onNodeContextMenu}
+            onEdgeContextMenu={onEdgeContextMenu}
             onPaneClick={() => setContextMenu(null)}
             onConnect={onConnect}
           >
@@ -257,13 +317,23 @@ export default function Home() {
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onMouseDown={(e) => e.stopPropagation()} // prevent outside-click handler from firing
             >
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                onClick={() => deleteTable(contextMenu.nodeId)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete table
-              </button>
+              {contextMenu.kind === "node" ? (
+                <button
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                  onClick={() => deleteTable(contextMenu.nodeId)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete table
+                </button>
+              ) : (
+                <button
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                  onClick={() => deleteEdge(contextMenu.edgeId)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete relationship
+                </button>
+              )}
             </div>
           )}
         </section>
