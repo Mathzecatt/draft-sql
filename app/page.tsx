@@ -21,10 +21,13 @@ import {
 import { useTheme } from "next-themes";
 import {
   ReactFlow,
+  ReactFlowProvider,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   Background,
   Controls,
+  MiniMap,
   BackgroundVariant,
   addEdge,
   type Connection,
@@ -36,7 +39,9 @@ import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
 import {
   FK_ACTIONS,
+  CARDINALITIES,
   uniqueName,
+  type Cardinality,
   type FkAction,
   type TableNodeData,
   type TableNodeType,
@@ -64,7 +69,19 @@ const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 520;
 const DEFAULT_SIDEBAR_WIDTH = 288;
 
+// Wrapper so useReactFlow() works inside Sidebar (and anywhere else outside
+// the <ReactFlow> subtree). Without an explicit provider, the hook only
+// works in custom node/edge components rendered by React Flow itself.
 export default function Home() {
+  return (
+    <ReactFlowProvider>
+      <HomeInner />
+    </ReactFlowProvider>
+  );
+}
+
+function HomeInner() {
+  const reactFlow = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FkEdgeType>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
@@ -200,6 +217,38 @@ export default function Home() {
 
   const selectedNode = nodes.find((n) => n.selected);
   // issues/hasErrors are computed earlier (above the keyboard effects).
+
+  // Select a table programmatically (from the sidebar list) and pan/zoom to it.
+  // fitView with a single node id zooms to fit just that node — duration > 0
+  // makes the move animated, which is the natural feedback for "find this table".
+  const selectAndFocusTable = useCallback(
+    (nodeId: string) => {
+      setNodes((prev) =>
+        prev.map((n) => ({ ...n, selected: n.id === nodeId })),
+      );
+      reactFlow.fitView({
+        nodes: [{ id: nodeId }],
+        duration: 400,
+        padding: 0.4,
+      });
+    },
+    [setNodes, reactFlow],
+  );
+
+  // Open the same context menu the canvas right-click uses, but from the
+  // sidebar list. Keeps a single source of truth for menu rendering.
+  const openTableContextMenu = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      e.preventDefault();
+      setContextMenu({
+        kind: "node",
+        x: e.clientX,
+        y: e.clientY,
+        nodeId,
+      });
+    },
+    [],
+  );
 
   const duplicateTable = useCallback(
     (nodeId: string) => {
@@ -434,6 +483,33 @@ export default function Home() {
     [setEdges],
   );
 
+  const setEdgeCardinality = useCallback(
+    (edgeId: string, side: "source" | "target", value: Cardinality) => {
+      setEdges((prev) =>
+        prev.map((e) => {
+          if (e.id !== edgeId) return e;
+          // sourceColumnId/targetColumnId are required by FkEdgeData. Fall back
+          // defensively if data is somehow missing — every edge created via
+          // onConnect has it set.
+          const baseData = {
+            sourceColumnId: e.data?.sourceColumnId ?? "",
+            targetColumnId: e.data?.targetColumnId ?? "",
+            ...e.data,
+          };
+          return {
+            ...e,
+            data:
+              side === "source"
+                ? { ...baseData, sourceCardinality: value }
+                : { ...baseData, targetCardinality: value },
+          };
+        }),
+      );
+      setContextMenu(null);
+    },
+    [setEdges],
+  );
+
   const setEdgeOnDelete = useCallback(
     (edgeId: string, action: FkAction) => {
       setEdges((prev) =>
@@ -615,6 +691,17 @@ export default function Home() {
           >
             <Background variant={BackgroundVariant.Dots} gap={24} />
             <Controls />
+            <MiniMap
+              pannable
+              zoomable
+              // Theme-aware colors via CSS variables. The minimap renders in
+              // SVG so we need explicit colors — Tailwind classes don't reach
+              // the inner elements without these props.
+              maskColor="rgb(0 0 0 / 0.15)"
+              nodeColor="var(--primary)"
+              nodeStrokeColor="var(--border)"
+              className="!bg-card !border !border-border !rounded-md"
+            />
           </ReactFlow>
 
           {/* Don't show the empty-state message until hydration is done —
@@ -682,8 +769,54 @@ export default function Home() {
                     );
                     const currentAction =
                       currentEdge?.data?.onDelete ?? "NO ACTION";
+                    const currentSourceCard =
+                      currentEdge?.data?.sourceCardinality ?? "many";
+                    const currentTargetCard =
+                      currentEdge?.data?.targetCardinality ?? "one";
+                    const renderCardSection = (
+                      title: string,
+                      side: "source" | "target",
+                      current: Cardinality,
+                    ) => (
+                      <>
+                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {title}
+                        </div>
+                        {CARDINALITIES.map((c) => (
+                          <button
+                            key={c}
+                            className={
+                              "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:bg-accent " +
+                              (c === current
+                                ? "font-semibold text-primary"
+                                : "")
+                            }
+                            onClick={() =>
+                              setEdgeCardinality(contextMenu.edgeId, side, c)
+                            }
+                          >
+                            <span>{c}</span>
+                            {c === current && (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    );
                     return (
                       <>
+                        {renderCardSection(
+                          "Source cardinality",
+                          "source",
+                          currentSourceCard,
+                        )}
+                        <div className="my-1 h-px bg-border" />
+                        {renderCardSection(
+                          "Target cardinality",
+                          "target",
+                          currentTargetCard,
+                        )}
+                        <div className="my-1 h-px bg-border" />
                         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           On delete
                         </div>
@@ -731,6 +864,10 @@ export default function Home() {
           updateTableData={updateTableData}
           deleteTable={deleteTable}
           issues={issues}
+          allNodes={nodes}
+          edgeCount={edges.length}
+          onSelectTable={selectAndFocusTable}
+          onTableContextMenu={openTableContextMenu}
         />
       </div>
 

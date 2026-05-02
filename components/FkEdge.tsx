@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -57,39 +58,76 @@ export function FkEdge({
   const stroke = selected ? "var(--primary)" : "var(--muted-foreground)";
   const strokeWidth = selected ? 2 : 1.5;
 
+  // Cardinality defaults: many on the source side (the FK lives there), one on
+  // the target. This matches the standard "many orders → one user" convention.
+  const sourceCard = data?.sourceCardinality ?? "many";
+  const targetCard = data?.targetCardinality ?? "one";
+
+  // Marker ids encode shape + selection state to allow per-edge color.
+  const variant = selected ? "selected" : "default";
+  const markerStart = `url(#card-${sourceCard}-${variant})`;
+  const markerEnd = `url(#card-${targetCard}-${variant})`;
+
   return (
     <>
       <BaseEdge
         id={id}
         path={edgePath}
         style={{ stroke, strokeWidth }}
-        markerEnd={`url(#fk-arrow-${selected ? "selected" : "default"})`}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
       />
-      {/* SVG defs for the arrow marker. React Flow renders all edges into one
-          SVG, so the <defs> we drop here are reachable from any edge by id. */}
+      {/* SVG defs for the cardinality markers. React Flow renders all edges
+          into one SVG, so <defs> dropped here are reachable from any edge.
+          We define 4 markers (one/many × default/selected) and reference the
+          right pair per edge.
+          - "one"  = perpendicular bar
+          - "many" = crow's foot, apex at the entity, legs fanning along the edge
+          orient="auto-start-reverse" makes the marker rotate with the path
+          direction; the start marker is also flipped so its "apex" still
+          points at its node. */}
       <defs>
-        <marker
-          id="fk-arrow-default"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted-foreground)" />
-        </marker>
-        <marker
-          id="fk-arrow-selected"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
-        </marker>
+        {(["default", "selected"] as const).map((v) => {
+          const color =
+            v === "selected" ? "var(--primary)" : "var(--muted-foreground)";
+          return (
+            <Fragment key={v}>
+              <marker
+                id={`card-one-${v}`}
+                viewBox="0 0 12 12"
+                refX="11"
+                refY="6"
+                markerWidth="14"
+                markerHeight="14"
+                orient="auto-start-reverse"
+              >
+                <path
+                  d="M 9 1 L 9 11"
+                  stroke={color}
+                  strokeWidth="1.6"
+                  fill="none"
+                />
+              </marker>
+              <marker
+                id={`card-many-${v}`}
+                viewBox="0 0 12 12"
+                refX="11"
+                refY="6"
+                markerWidth="14"
+                markerHeight="14"
+                orient="auto-start-reverse"
+              >
+                {/* Apex at (11, 6); legs to (1, 1), (1, 6), (1, 11) */}
+                <path
+                  d="M 11 6 L 1 1 M 11 6 L 1 6 M 11 6 L 1 11"
+                  stroke={color}
+                  strokeWidth="1.6"
+                  fill="none"
+                />
+              </marker>
+            </Fragment>
+          );
+        })}
       </defs>
       <EdgeLabelRenderer>
         {/* The double translate is React Flow's standard label-positioning trick:
