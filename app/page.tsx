@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { generateSql, downloadSql } from "@/lib/sql";
+import { validateSchema } from "@/lib/validation";
 
 // Discriminated union — same menu, but the action depends on what was right-clicked.
 type ContextMenu =
@@ -122,6 +123,12 @@ export default function Home() {
   }, [contextMenu]);
 
   const selectedNode = nodes.find((n) => n.selected);
+
+  // Recompute on every render — cheap (just iterates nodes/columns once)
+  // and React Flow's selection changes already re-render us, so memoizing
+  // wouldn't buy much.
+  const issues = validateSchema(nodes);
+  const hasErrors = issues.length > 0;
 
   const deleteTable = useCallback(
     (nodeId: string) => {
@@ -266,7 +273,19 @@ export default function Home() {
             <Plus className="mr-1 h-4 w-4" />
             New table
           </Button>
-          <Button size="sm" variant="outline" onClick={exportSql}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={exportSql}
+            disabled={hasErrors || nodes.length === 0}
+            title={
+              hasErrors
+                ? "Fix validation errors before exporting"
+                : nodes.length === 0
+                  ? "No tables to export"
+                  : undefined
+            }
+          >
             <Download className="mr-1 h-4 w-4" />
             Export SQL
           </Button>
@@ -378,6 +397,7 @@ export default function Home() {
           selectedNode={selectedNode}
           updateTableData={updateTableData}
           deleteTable={deleteTable}
+          issues={issues}
         />
       </div>
 

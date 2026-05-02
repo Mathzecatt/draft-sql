@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,11 @@ import {
   type TableNodeData,
   type TableNodeType,
 } from "@/lib/schema";
+import {
+  invalidColumnIds,
+  isTableNameInvalid,
+  type ValidationIssue,
+} from "@/lib/validation";
 
 // Tiny toggle pill for column constraints (PK / NN / UQ).
 // Why a custom component instead of shadcn's Toggle? Toggle isn't installed,
@@ -59,6 +64,7 @@ type SidebarProps = {
     updater: (data: TableNodeData) => TableNodeData
   ) => void;
   deleteTable: (nodeId: string) => void;
+  issues: ValidationIssue[];
 };
 
 export function Sidebar({
@@ -68,7 +74,17 @@ export function Sidebar({
   selectedNode,
   updateTableData,
   deleteTable,
+  issues,
 }: SidebarProps) {
+  // Pre-compute the invalid column ids + table-name flag for the selected node
+  // so the JSX below stays readable.
+  const badColumnIds = selectedNode
+    ? invalidColumnIds(issues, selectedNode.id)
+    : new Set<string>();
+  const tableNameInvalid = selectedNode
+    ? isTableNameInvalid(issues, selectedNode.id, selectedNode.data.name)
+    : false;
+
   return (
     <aside
       ref={sidebarRef}
@@ -85,6 +101,22 @@ export function Sidebar({
       />
 
       <h2 className="text-sm font-semibold">Table properties</h2>
+
+      {/* Schema-wide validation banner — visible regardless of selection */}
+      {issues.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium">
+              {issues.length} {issues.length === 1 ? "issue" : "issues"} blocking
+              SQL export
+            </span>
+            <span className="text-[11px] opacity-90">
+              Fix duplicate or empty names to enable export.
+            </span>
+          </div>
+        </div>
+      )}
 
       {!selectedNode ? (
         <p className="text-sm text-muted-foreground">
@@ -110,7 +142,13 @@ export function Sidebar({
                     name: e.target.value,
                   }))
                 }
-                className="h-8 flex-1"
+                aria-invalid={tableNameInvalid || undefined}
+                className={
+                  "h-8 flex-1" +
+                  (tableNameInvalid
+                    ? " border-destructive focus-visible:ring-destructive/30"
+                    : "")
+                }
               />
               <Button
                 size="sm"
@@ -173,7 +211,13 @@ export function Sidebar({
                         <Input
                           value={col.name}
                           onChange={(e) => patchColumn({ name: e.target.value })}
-                          className="h-7 min-w-0 flex-1 text-xs"
+                          aria-invalid={badColumnIds.has(col.id) || undefined}
+                          className={
+                            "h-7 min-w-0 flex-1 text-xs" +
+                            (badColumnIds.has(col.id)
+                              ? " border-destructive focus-visible:ring-destructive/30"
+                              : "")
+                          }
                         />
                         <Select
                           value={col.type}
