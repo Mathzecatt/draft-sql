@@ -85,6 +85,7 @@ export default function Home() {
     if (stored) {
       setNodes(stored.nodes);
       setEdges(stored.edges);
+      if (stored.schemaName !== undefined) setSchemaName(stored.schemaName);
     }
     setHydrated(true);
   }, [setNodes, setEdges]);
@@ -92,8 +93,8 @@ export default function Home() {
   // Persist on every change, but only after hydration is done.
   useEffect(() => {
     if (!hydrated) return;
-    saveSchema({ nodes, edges });
-  }, [nodes, edges, hydrated]);
+    saveSchema({ nodes, edges, schemaName });
+  }, [nodes, edges, schemaName, hydrated]);
 
   // resizable sidebar
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
@@ -456,7 +457,9 @@ export default function Home() {
             <Controls />
           </ReactFlow>
 
-          {nodes.length === 0 && (
+          {/* Don't show the empty-state message until hydration is done —
+              otherwise a saved schema flashes "Click New table..." for a frame. */}
+          {hydrated && nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <p className="text-sm text-muted-foreground">
                 Click &quot;New table&quot; to start designing your schema

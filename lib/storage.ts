@@ -8,6 +8,7 @@ const STORAGE_KEY = "draft-sql-schema-v1";
 export type StoredSchema = {
   nodes: TableNodeType[];
   edges: FkEdgeType[];
+  schemaName?: string;
 };
 
 export function loadSchema(): StoredSchema | null {
