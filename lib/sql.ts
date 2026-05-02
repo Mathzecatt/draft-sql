@@ -34,6 +34,12 @@ function renderColumn(col: ColumnDef, isCompositePk: boolean): string {
   return `  ${parts.join(" ")}`;
 }
 
+// Public — used by "Copy CREATE TABLE" right-click action so a single table
+// can be shared in isolation. No FKs, no schema header.
+export function renderSingleTable(node: TableNodeType): string {
+  return renderTable(node);
+}
+
 function renderTable(node: TableNodeType): string {
   const tableName = quoteIdent(node.data.name || "unnamed");
   const columns = node.data.columns;
