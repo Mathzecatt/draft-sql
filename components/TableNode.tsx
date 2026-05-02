@@ -1,4 +1,10 @@
-import { Handle, Position, type NodeProps, type NodeTypes } from "@xyflow/react";
+import {
+  Handle,
+  Position,
+  useConnection,
+  type NodeProps,
+  type NodeTypes,
+} from "@xyflow/react";
 import type { TableNodeType } from "@/lib/schema";
 
 // Handle id suffixes — unique per node, so left and right handles on the same
@@ -10,13 +16,30 @@ const RIGHT = "-r";
 // Why !important on size? React Flow ships default handle styles in its CSS,
 // and Tailwind's utilities lose the cascade fight without the bang. Pinning
 // the colors to theme tokens keeps the dot visible in dark + light mode.
+//
+// opacity rules:
+//   - hidden by default (clean visual)
+//   - visible when hovering THIS table (Tailwind's `group-hover/table`)
+//   - visible when ANY connection is in progress (so the user can see drop targets
+//     on tables they haven't hovered yet) — set inline via the `is-connecting` flag
 const HANDLE_CLASS =
-  "!h-2 !w-2 !border !border-border !bg-muted-foreground";
+  "!h-2 !w-2 !border !border-border !bg-muted-foreground opacity-0 transition-opacity group-hover/table:opacity-100";
 
 // Custom node — renders a table card with its columns listed
 export function TableNode({ data }: NodeProps<TableNodeType>) {
+  // useConnection re-renders this node while a drag is in progress. Cheap
+  // because it's a primitive boolean we read out of the React Flow store.
+  const connection = useConnection();
+  const isConnecting = connection.inProgress;
+
+  // Compose the per-handle class once. When a connection is in progress,
+  // force-show all handles regardless of hover so the user can drop anywhere
+  // without first having to hover the destination table to "wake up" its dots.
+  const handleClass =
+    HANDLE_CLASS + (isConnecting ? " !opacity-100" : "");
+
   return (
-    <div className="w-52 rounded-lg border bg-card shadow-sm">
+    <div className="group/table w-52 rounded-lg border bg-card shadow-sm">
       <div className="rounded-t-lg bg-primary px-3 py-2">
         <span className="text-sm font-semibold text-primary-foreground">
           {data.name || "unnamed"}
@@ -38,7 +61,7 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
                 type="target"
                 position={Position.Left}
                 id={col.id + LEFT}
-                className={HANDLE_CLASS}
+                className={handleClass}
               />
               <span className="flex items-center gap-1 text-xs font-medium">
                 {col.primaryKey && (
@@ -77,7 +100,7 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
                 type="source"
                 position={Position.Right}
                 id={col.id + RIGHT}
-                className={HANDLE_CLASS}
+                className={handleClass}
               />
             </div>
           ))
