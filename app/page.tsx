@@ -123,6 +123,26 @@ export default function Home() {
     };
   }, []);
 
+  // Derived values — declared early so the keyboard effects below can read them.
+  const issues = validateSchema(nodes);
+  const hasErrors = issues.length > 0;
+
+  // Cmd/Ctrl+S opens the SQL preview. Browser default (save page) is overridden.
+  // Only fires when the schema is exportable, otherwise we'd open a useless dialog.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod || e.key.toLowerCase() !== "s") return;
+      e.preventDefault();
+      if (hasErrors || nodes.length === 0) return;
+      setSqlPreview(generateSql(nodes, edges, schemaName));
+      setCopyState("idle");
+      setSqlPreviewOpen(true);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [nodes, edges, schemaName, hasErrors]);
+
   // Delete / Backspace removes the currently selected nodes and edges.
   // We swallow the event only if there's actually something selected, otherwise
   // a Backspace in an unrelated input field would get hijacked.
@@ -175,12 +195,7 @@ export default function Home() {
   }, [contextMenu]);
 
   const selectedNode = nodes.find((n) => n.selected);
-
-  // Recompute on every render — cheap (just iterates nodes/columns once)
-  // and React Flow's selection changes already re-render us, so memoizing
-  // wouldn't buy much.
-  const issues = validateSchema(nodes);
-  const hasErrors = issues.length > 0;
+  // issues/hasErrors are computed earlier (above the keyboard effects).
 
   const deleteTable = useCallback(
     (nodeId: string) => {
