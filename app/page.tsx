@@ -20,6 +20,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
+import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
 import type { TableNodeData, TableNodeType, FkEdgeType } from "@/lib/schema";
 
@@ -232,6 +233,7 @@ export default function Home() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodeContextMenu={onNodeContextMenu}
             onPaneClick={() => setContextMenu(null)}
             onConnect={onConnect}
