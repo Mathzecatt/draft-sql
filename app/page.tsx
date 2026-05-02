@@ -33,7 +33,9 @@ import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
 import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
 import {
+  FK_ACTIONS,
   uniqueName,
+  type FkAction,
   type TableNodeData,
   type TableNodeType,
   type FkEdgeType,
@@ -312,6 +314,29 @@ export default function Home() {
     [setEdges],
   );
 
+  const setEdgeOnDelete = useCallback(
+    (edgeId: string, action: FkAction) => {
+      setEdges((prev) =>
+        prev.map((e) =>
+          e.id === edgeId
+            ? {
+                ...e,
+                data: {
+                  // data is technically optional on the type, but every edge we
+                  // create through onConnect has it set. Fall back defensively.
+                  sourceColumnId: e.data?.sourceColumnId ?? "",
+                  targetColumnId: e.data?.targetColumnId ?? "",
+                  onDelete: action,
+                },
+              }
+            : e,
+        ),
+      );
+      setContextMenu(null);
+    },
+    [setEdges],
+  );
+
   const clearAll = useCallback(() => {
     setNodes([]);
     setEdges([]);
@@ -498,13 +523,49 @@ export default function Home() {
                   Delete table
                 </button>
               ) : (
-                <button
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                  onClick={() => deleteEdge(contextMenu.edgeId)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete relationship
-                </button>
+                <>
+                  {(() => {
+                    const currentEdge = edges.find(
+                      (e) => e.id === contextMenu.edgeId,
+                    );
+                    const currentAction =
+                      currentEdge?.data?.onDelete ?? "NO ACTION";
+                    return (
+                      <>
+                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          On delete
+                        </div>
+                        {FK_ACTIONS.map((action) => (
+                          <button
+                            key={action}
+                            className={
+                              "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:bg-accent " +
+                              (action === currentAction
+                                ? "font-semibold text-primary"
+                                : "")
+                            }
+                            onClick={() =>
+                              setEdgeOnDelete(contextMenu.edgeId, action)
+                            }
+                          >
+                            <span>{action}</span>
+                            {action === currentAction && (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        ))}
+                        <div className="my-1 h-px bg-border" />
+                      </>
+                    );
+                  })()}
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                    onClick={() => deleteEdge(contextMenu.edgeId)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete relationship
+                  </button>
+                </>
               )}
             </div>
           )}

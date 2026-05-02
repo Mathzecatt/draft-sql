@@ -32,9 +32,21 @@ export type TableNodeData = {
 
 export type TableNodeType = Node<TableNodeData, "table">;
 
+// Standard PostgreSQL referential actions. NO ACTION is the default and
+// emits no clause (PostgreSQL behaves that way implicitly).
+export const FK_ACTIONS = [
+  "NO ACTION",
+  "CASCADE",
+  "RESTRICT",
+  "SET NULL",
+  "SET DEFAULT",
+] as const;
+export type FkAction = (typeof FK_ACTIONS)[number];
+
 export type FkEdgeData = {
   sourceColumnId: string;
   targetColumnId: string;
+  onDelete?: FkAction;
 };
 
 export type FkEdgeType = Edge<FkEdgeData, "fk">;

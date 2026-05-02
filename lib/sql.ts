@@ -88,11 +88,17 @@ function renderForeignKey(
   // The FK lives on the SOURCE side: source table has the column that points
   // to the target. (Connections are dragged from a column → another column
   // it should reference.)
+  // ON DELETE clause is only emitted when explicitly set to something other
+  // than NO ACTION (which is the implicit PostgreSQL default).
+  const onDelete =
+    edge.data?.onDelete && edge.data.onDelete !== "NO ACTION"
+      ? ` ON DELETE ${edge.data.onDelete}`
+      : "";
   return `ALTER TABLE ${quoteIdent(resolved.sourceTable)} ADD CONSTRAINT ${quoteIdent(
     `fk_${resolved.sourceTable}_${resolved.sourceColumn}`,
   )} FOREIGN KEY (${quoteIdent(resolved.sourceColumn)}) REFERENCES ${quoteIdent(
     resolved.targetTable,
-  )} (${quoteIdent(resolved.targetColumn)});`;
+  )} (${quoteIdent(resolved.targetColumn)})${onDelete};`;
 }
 
 export function generateSql(

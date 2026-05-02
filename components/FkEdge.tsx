@@ -109,6 +109,11 @@ export function FkEdge({
           }
         >
           {sourceLabel} → {targetLabel}
+          {data?.onDelete && data.onDelete !== "NO ACTION" && (
+            <span className="ml-1 rounded bg-muted px-1 text-[9px] font-semibold uppercase tracking-wide">
+              {data.onDelete}
+            </span>
+          )}
         </div>
       </EdgeLabelRenderer>
     </>
