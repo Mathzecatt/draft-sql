@@ -17,6 +17,12 @@ export type ColumnDef = {
   name: string;
   type: SqlType;
   length?: number; // only relevant for VARCHAR
+  // Constraint flags. All optional; absence means false. Stored separately
+  // (rather than as a "constraints" array) because the trio is bounded and
+  // toggling a single one stays a simple boolean flip.
+  primaryKey?: boolean;
+  notNull?: boolean;
+  unique?: boolean;
 };
 
 export type TableNodeData = {

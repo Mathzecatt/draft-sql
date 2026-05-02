@@ -17,7 +17,19 @@ function renderColumnType(col: ColumnDef): string {
 }
 
 function renderColumn(col: ColumnDef): string {
-  return `  ${quoteIdent(col.name || "unnamed")} ${renderColumnType(col)}`;
+  const parts: string[] = [
+    quoteIdent(col.name || "unnamed"),
+    renderColumnType(col),
+  ];
+  // PRIMARY KEY in PostgreSQL implies NOT NULL + UNIQUE, so we suppress the
+  // redundant clauses to keep the generated SQL clean.
+  if (col.primaryKey) {
+    parts.push("PRIMARY KEY");
+  } else {
+    if (col.notNull) parts.push("NOT NULL");
+    if (col.unique) parts.push("UNIQUE");
+  }
+  return `  ${parts.join(" ")}`;
 }
 
 function renderTable(node: TableNodeType): string {

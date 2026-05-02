@@ -40,7 +40,15 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
                 id={col.id + LEFT}
                 className={HANDLE_CLASS}
               />
-              <span className="text-xs font-medium">
+              <span className="flex items-center gap-1 text-xs font-medium">
+                {col.primaryKey && (
+                  <span
+                    title="Primary key"
+                    className="rounded bg-primary px-1 text-[9px] font-semibold text-primary-foreground"
+                  >
+                    PK
+                  </span>
+                )}
                 {col.name || "unnamed"}
               </span>
               <span className="text-xs text-muted-foreground">
