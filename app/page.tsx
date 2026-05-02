@@ -24,7 +24,6 @@ import {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
-  useReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -69,9 +68,9 @@ const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 520;
 const DEFAULT_SIDEBAR_WIDTH = 288;
 
-// Wrapper so useReactFlow() works inside Sidebar (and anywhere else outside
-// the <ReactFlow> subtree). Without an explicit provider, the hook only
-// works in custom node/edge components rendered by React Flow itself.
+// Wrapper kept around the page so any future hook that needs React Flow's
+// store (useReactFlow, useStore, etc.) works from outside the <ReactFlow>
+// subtree — currently the Sidebar doesn't need it but it's cheap to keep.
 export default function Home() {
   return (
     <ReactFlowProvider>
@@ -81,7 +80,6 @@ export default function Home() {
 }
 
 function HomeInner() {
-  const reactFlow = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FkEdgeType>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
@@ -218,21 +216,16 @@ function HomeInner() {
   const selectedNode = nodes.find((n) => n.selected);
   // issues/hasErrors are computed earlier (above the keyboard effects).
 
-  // Select a table programmatically (from the sidebar list) and pan/zoom to it.
-  // fitView with a single node id zooms to fit just that node — duration > 0
-  // makes the move animated, which is the natural feedback for "find this table".
+  // Select a table programmatically from the sidebar list — no viewport
+  // change. (Zooming was disorienting: clicking a table from the panel
+  // shouldn't move the canvas around.)
   const selectAndFocusTable = useCallback(
     (nodeId: string) => {
       setNodes((prev) =>
         prev.map((n) => ({ ...n, selected: n.id === nodeId })),
       );
-      reactFlow.fitView({
-        nodes: [{ id: nodeId }],
-        duration: 400,
-        padding: 0.4,
-      });
     },
-    [setNodes, reactFlow],
+    [setNodes],
   );
 
   // Open the same context menu the canvas right-click uses, but from the
