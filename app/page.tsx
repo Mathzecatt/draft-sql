@@ -15,6 +15,8 @@ import {
   Eraser,
   Copy,
   Check,
+  Clock,
+  FileCode,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -49,7 +51,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { generateSql, downloadSql } from "@/lib/sql";
+import { generateSql, downloadSql, renderSingleTable } from "@/lib/sql";
 import { validateSchema } from "@/lib/validation";
 
 // Discriminated union — same menu, but the action depends on what was right-clicked.
@@ -198,6 +200,124 @@ export default function Home() {
 
   const selectedNode = nodes.find((n) => n.selected);
   // issues/hasErrors are computed earlier (above the keyboard effects).
+
+  const duplicateTable = useCallback(
+    (nodeId: string) => {
+      setNodes((prev) => {
+        const original = prev.find((n) => n.id === nodeId);
+        if (!original) return prev;
+        const newName = uniqueName(
+          original.data.name || "table",
+          prev.map((n) => n.data.name),
+        );
+        return [
+          ...prev,
+          {
+            ...original,
+            id: crypto.randomUUID(),
+            position: {
+              x: original.position.x + 40,
+              y: original.position.y + 40,
+            },
+            selected: false,
+            data: {
+              name: newName,
+              // Each duplicated column needs a fresh id — otherwise FK edges
+              // bound to the original would visually attach to both copies.
+              columns: original.data.columns.map((c) => ({
+                ...c,
+                id: crypto.randomUUID(),
+              })),
+            },
+          },
+        ];
+      });
+      setContextMenu(null);
+    },
+    [setNodes],
+  );
+
+  const addColumnToTable = useCallback(
+    (nodeId: string) => {
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  columns: [
+                    ...node.data.columns,
+                    {
+                      id: crypto.randomUUID(),
+                      name: uniqueName(
+                        "column",
+                        node.data.columns.map((c) => c.name),
+                      ),
+                      type: "INTEGER",
+                    },
+                  ],
+                },
+              }
+            : node,
+        ),
+      );
+      setContextMenu(null);
+    },
+    [setNodes],
+  );
+
+  const addTimestamps = useCallback(
+    (nodeId: string) => {
+      setNodes((prev) =>
+        prev.map((node) => {
+          if (node.id !== nodeId) return node;
+          // Skip names that already exist (case-insensitive) so re-running
+          // this action on a partially-stamped table is a no-op for the
+          // existing column and only adds the missing one.
+          const existing = new Set(
+            node.data.columns.map((c) => c.name.trim().toLowerCase()),
+          );
+          const toAdd = (
+            ["created_at", "updated_at"] as const
+          ).filter((n) => !existing.has(n));
+          if (toAdd.length === 0) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              columns: [
+                ...node.data.columns,
+                ...toAdd.map((name) => ({
+                  id: crypto.randomUUID(),
+                  name,
+                  type: "TIMESTAMP" as const,
+                  notNull: true,
+                })),
+              ],
+            },
+          };
+        }),
+      );
+      setContextMenu(null);
+    },
+    [setNodes],
+  );
+
+  const copyTableSql = useCallback(
+    async (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const sql = renderSingleTable(node);
+      try {
+        await navigator.clipboard.writeText(sql);
+      } catch {
+        // Clipboard API unavailable — silently ignore. Could surface a toast later.
+      }
+      setContextMenu(null);
+    },
+    [nodes],
+  );
 
   const deleteTable = useCallback(
     (nodeId: string) => {
@@ -515,13 +635,45 @@ export default function Home() {
               onMouseDown={(e) => e.stopPropagation()} // prevent outside-click handler from firing
             >
               {contextMenu.kind === "node" ? (
-                <button
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                  onClick={() => deleteTable(contextMenu.nodeId)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete table
-                </button>
+                <>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => addColumnToTable(contextMenu.nodeId)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add column
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => addTimestamps(contextMenu.nodeId)}
+                    title="Adds created_at and updated_at TIMESTAMP NOT NULL"
+                  >
+                    <Clock className="h-4 w-4" />
+                    Add timestamps
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => duplicateTable(contextMenu.nodeId)}
+                  >
+                    <Copy className="h-4 w-4" />
+                    Duplicate table
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => copyTableSql(contextMenu.nodeId)}
+                  >
+                    <FileCode className="h-4 w-4" />
+                    Copy CREATE TABLE
+                  </button>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                    onClick={() => deleteTable(contextMenu.nodeId)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete table
+                  </button>
+                </>
               ) : (
                 <>
                   {(() => {
