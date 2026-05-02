@@ -90,38 +90,47 @@ export function FkEdge({
         {(["default", "selected"] as const).map((v) => {
           const color =
             v === "selected" ? "var(--primary)" : "var(--muted-foreground)";
+          // Match the edge stroke so the marker doesn't visually disconnect
+          // from the line. selected = 2, default = 1.5 (same as BaseEdge above).
+          const sw = v === "selected" ? 2 : 1.5;
+          // markerUnits="userSpaceOnUse" makes width/height pixel-absolute
+          // instead of multiplying by the edge stroke — without this the
+          // markers ballooned to ~20px and looked grotesque next to a 1.5px line.
           return (
             <Fragment key={v}>
               <marker
                 id={`card-one-${v}`}
-                viewBox="0 0 12 12"
-                refX="11"
-                refY="6"
-                markerWidth="14"
-                markerHeight="14"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="10"
+                markerHeight="10"
+                markerUnits="userSpaceOnUse"
                 orient="auto-start-reverse"
               >
                 <path
-                  d="M 9 1 L 9 11"
+                  d="M 8 2 L 8 8"
                   stroke={color}
-                  strokeWidth="1.6"
+                  strokeWidth={sw}
                   fill="none"
                 />
               </marker>
               <marker
                 id={`card-many-${v}`}
-                viewBox="0 0 12 12"
-                refX="11"
-                refY="6"
-                markerWidth="14"
-                markerHeight="14"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="10"
+                markerHeight="10"
+                markerUnits="userSpaceOnUse"
                 orient="auto-start-reverse"
               >
-                {/* Apex at (11, 6); legs to (1, 1), (1, 6), (1, 11) */}
+                {/* Apex at (9, 5); legs to (2, 1), (2, 5), (2, 9) — tighter
+                    than before so it reads as a small symbol, not a fan. */}
                 <path
-                  d="M 11 6 L 1 1 M 11 6 L 1 6 M 11 6 L 1 11"
+                  d="M 9 5 L 2 1 M 9 5 L 2 5 M 9 5 L 2 9"
                   stroke={color}
-                  strokeWidth="1.6"
+                  strokeWidth={sw}
                   fill="none"
                 />
               </marker>
