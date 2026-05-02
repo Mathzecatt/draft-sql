@@ -38,3 +38,13 @@ export type FkEdgeData = {
 };
 
 export type FkEdgeType = Edge<FkEdgeData, "fk">;
+
+// Generate a name like "table_3" that doesn't collide with any name in `existing`.
+// Used when creating new tables/columns so the user doesn't immediately get a
+// validation error. Comparison is case-insensitive to match the validator.
+export function uniqueName(base: string, existing: string[]): string {
+  const taken = new Set(existing.map((n) => n.trim().toLowerCase()));
+  let i = 1;
+  while (taken.has(`${base}_${i}`.toLowerCase())) i++;
+  return `${base}_${i}`;
+}

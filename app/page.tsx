@@ -32,7 +32,12 @@ import "@xyflow/react/dist/style.css";
 import { nodeTypes, columnIdFromHandle } from "@/components/TableNode";
 import { edgeTypes } from "@/components/FkEdge";
 import { Sidebar } from "@/components/Sidebar";
-import type { TableNodeData, TableNodeType, FkEdgeType } from "@/lib/schema";
+import {
+  uniqueName,
+  type TableNodeData,
+  type TableNodeType,
+  type FkEdgeType,
+} from "@/lib/schema";
 import { loadSchema, saveSchema, clearSchema } from "@/lib/storage";
 import {
   Dialog,
@@ -202,6 +207,10 @@ export default function Home() {
   const addTable = useCallback(() => {
     setNodes((prev) => {
       const idx = prev.length;
+      const name = uniqueName(
+        "table",
+        prev.map((n) => n.data.name),
+      );
       return [
         ...prev,
         {
@@ -211,7 +220,7 @@ export default function Home() {
             x: 80 + (idx % 4) * 220,
             y: 80 + Math.floor(idx / 4) * 180,
           },
-          data: { name: `table_${idx + 1}`, columns: [] },
+          data: { name, columns: [] },
         },
       ];
     });

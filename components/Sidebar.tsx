@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   SQL_TYPES,
+  uniqueName,
   type SqlType,
   type TableNodeData,
   type TableNodeType,
@@ -177,7 +178,10 @@ export function Sidebar({
                       ...d.columns,
                       {
                         id: crypto.randomUUID(),
-                        name: "column_name",
+                        name: uniqueName(
+                          "column",
+                          d.columns.map((c) => c.name),
+                        ),
                         type: "INTEGER",
                       },
                     ],
