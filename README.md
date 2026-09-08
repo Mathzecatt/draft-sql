@@ -1,4 +1,4 @@
-# Draft_SQL
+# Draft_SQL - https://draft-sql.vercel.app/
 
 Web-based visual database schema designer. Drag tables onto a canvas, define
 columns and constraints, draw foreign-key relationships, and export ready-to-run
